@@ -17,9 +17,45 @@ const generationConfig = {
   responseMimeType: "text/plain",
 };
 
+const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+const makeRequestWithRetry = async (taskName, attempts = 3) => {
+  try {
+    const chatSession = model.startChat({
+      generationConfig,
+      history: [
+        {
+          role: "user",
+          parts: [  
+            {
+              text: `Generate a unique schedule for the task "${taskName}" within the month. Respond in JSON format. Ensure the scheduledDate is unique.`,
+            },
+          ],
+        },
+      ],
+    });
+
+    const result = await chatSession.sendMessage(
+      `Generate a unique schedule for the task "${taskName}". and also don't repeat the date when new is added. Respond in JSON format.`
+    );
+
+    return result; // Return the result if the request is successful
+
+  } catch (error) {
+    if (attempts > 0 && error.message.includes('503 Service Unavailable')) {
+      console.log('Model is overloaded, retrying...');
+      await delay(2000); // Wait 2 seconds before retrying
+      return makeRequestWithRetry(taskName, attempts - 1); // Retry the request
+    } else {
+      throw new Error('Request failed after multiple attempts or other error: ' + error.message);
+    }
+  }
+};
+
 const autoScheduling = async (req, res) => {
     try {
-      const { tasks } = req.body;
+      const tasks = await fetchTasks();
+      
   
       if (!tasks || !Array.isArray(tasks) || tasks.length === 0) {
         return res.status(400).json({ error: "Tasks array is required and cannot be empty." });
